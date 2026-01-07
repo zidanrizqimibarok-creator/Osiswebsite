@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSIS SMPN 2 BANJAR - Official Website</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --white: #ffffff; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; background: var(--bg); color: #1e293b; }
+        
+        /* Navigasi */
+        nav { background: var(--white); padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; }
+        .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--primary); }
+        .nav-links button { background: #f1f5f9; border: none; padding: 10px 15px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.75rem; margin-left: 5px; }
+        .nav-links button.active { background: var(--primary); color: white; }
+
+        /* Angkatan Selector */
+        .filter-box { background: var(--white); padding: 20px; text-align: center; border-bottom: 4px solid var(--primary); }
+        select { padding: 10px 20px; border-radius: 10px; border: 2px solid var(--primary); font-weight: 800; cursor: pointer; }
+
+        .container { max-width: 1100px; margin: auto; padding: 30px 20px; }
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Bagan Struktur */
+        .tree { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .node { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; min-width: 180px; border-top: 5px solid var(--primary); }
+        .node b { display: block; font-size: 0.6rem; color: var(--primary); text-transform: uppercase; }
+        .node span { font-weight: 800; font-size: 1rem; }
+        .row { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; width: 100%; }
+        .line { width: 2px; height: 30px; background: #cbd5e1; }
+
+        /* Cards & Photos */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .card { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.05); transition: transform 0.2s; }
+        .card:hover { transform: translateY(-5px); }
+        .card img { width: 100%; height: 200px; object-fit: cover; cursor: zoom-in; }
+        .card-content { padding: 15px; }
+
+        /* --- OVERLAY PERBESAR FOTO (LIGHTBOX) --- */
+        #photoOverlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 2000; justify-content: center; align-items: center;
+            cursor: zoom-out;
+        }
+        #photoOverlay img { max-width: 90%; max-height: 85%; border-radius: 10px; box-shadow: 0 0 30px rgba(0,0,0,0.5); border: 3px solid white; }
+        #photoOverlay .close-btn { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; font-weight: bold; cursor: pointer; }
+
+        footer { text-align: center; padding: 40px; color: #94a3b8; font-size: 0.75rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="photoOverlay" onclick="closePhoto()">
+    <span class="close-btn">&times;</span>
+    <img id="expandedImg" src="">
+</div>
+
+<nav>
+    <div class="logo">
+        <img src="https://i.postimg.cc/44DDBvgq/IMG-20260107-WA0018(1).jpg" height="35">
+        <span>OSIS SMPN 2 BANJAR</span>
+    </div>
+    <div class="nav-links">
+        <button onclick="go('home')" id="n-home" class="active">HOME</button>
+        <button onclick="go('struktur')" id="n-struktur">STRUKTUR</button>
+        <button onclick="go('berita')" id="n-berita">BERITA</button>
+        <button onclick="go('prestasi')" id="n-prestasi">PRESTASI</button>
+    </div>
+</nav>
+
+<div class="filter-box">
+    <label style="font-weight: 800;">ANGKATAN : </label>
+    <select id="selYear" onchange="render()"></select>
+</div>
+
+<div class="container">
+    <div id="p-home" class="page active"><div id="list-galeri" class="grid"></div></div>
+    
+    <div id="p-struktur" class="page">
+        <div class="tree">
+            <div id="box-ketua"></div><div class="line"></div>
+            <div id="box-wakil"></div><div class="line"></div>
+            <div class="row" id="box-sekre"></div><div class="line"></div>
+            <div class="row" id="box-ben"></div>
+        </div>
+    </div>
+
+    <div id="p-berita" class="page"><div id="list-berita" class="grid"></div></div>
+    <div id="p-prestasi" class="page"><div id="list-prestasi" class="grid"></div></div>
+</div>
+
+<footer>&copy; 2026 OSIS SMP NEGERI 2 BANJAR | DATA AUTO-SAVE</footer>
+
+<script>
+    let db = JSON.parse(localStorage.getItem('osis_v6')) || [];
+    const ably = new Ably.Realtime('8FikgA.l09CGA:bAYKxr1SyBf-iGK412YaqEjNjh42ddlwNknnz5pAUa4');
+    const channel = ably.channels.get('osis-final-system');
+
+    // Fungsi Perbesar Foto
+    function openPhoto(src) {
+        const overlay = document.getElementById('photoOverlay');
+        const fullImg = document.getElementById('expandedImg');
+        fullImg.src = src;
+        overlay.style.display = 'flex';
+    }
+
+    function closePhoto() {
+        document.getElementById('photoOverlay').style.display = 'none';
+    }
+
+    function go(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-links button').forEach(b => b.classList.remove('active'));
+        document.getElementById('p-' + id).classList.add('active');
+        document.getElementById('n-' + id).classList.add('active');
+    }
+
+    channel.subscribe('broadcast', (m) => {
+        const d = m.data;
+        if(d.type === 'pengurus') db = db.filter(x => !(x.jabatan === d.jabatan && x.angkatan === d.angkatan));
+        else if(d.action === 'UPDATE') db = db.filter(x => !(x.judul === d.judul && x.angkatan === d.angkatan));
+        db.push(d);
+        localStorage.setItem('osis_v6', JSON.stringify(db));
+        updateSelect(); render();
+    });
+
+    function updateSelect() {
+        const s = document.getElementById('selYear');
+        const yrs = [...new Set(db.map(x => x.angkatan))].sort().reverse();
+        const cur = s.value;
+        s.innerHTML = yrs.map(y => `<option value="${y}">${y}</option>`).join('');
+        if(!s.value && yrs.length > 0) s.value = yrs[0];
+    }
+
+    function render() {
+        const ang = document.getElementById('selYear').value;
+        const fil = db.filter(x => x.angkatan === ang);
+
+        ['galeri', 'berita', 'prestasi'].forEach(t => {
+            const b = document.getElementById('list-' + t);
+            if(!b) return;
+            b.innerHTML = '';
+            fil.filter(x => x.type === t).forEach(i => {
+                b.innerHTML += `<div class="card">
+                    <img src="${i.foto}" onclick="openPhoto('${i.foto}')" onerror="this.src='https://via.placeholder.com/400x250?text=Link+Foto+Salah'">
+                    <div class="card-content"><h3>${i.judul}</h3><p>${i.isi || ''}</p></div>
+                </div>`;
+            });
+        });
+
+        ['box-ketua', 'box-wakil', 'box-sekre', 'box-ben'].forEach(id => document.getElementById(id).innerHTML = '');
+        fil.filter(x => x.type === 'pengurus').forEach(p => {
+            const h = `<div class="node"><b>${p.jabatan}</b><span>${p.nama}</span></div>`;
+            if(p.jabatan === 'Ketua Umum') document.getElementById('box-ketua').innerHTML = h;
+            else if(p.jabatan === 'Wakil Ketua') document.getElementById('box-wakil').innerHTML = h;
+            else if(p.jabatan.includes('Sekretaris')) document.getElementById('box-sekre').innerHTML += h;
+            else if(p.jabatan.includes('Bendahara')) document.getElementById('box-ben').innerHTML += h;
+        });
+    }
+
+    window.onload = () => { updateSelect(); render(); };
+</script>
+</body>
+</html>
